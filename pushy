@@ -1,0 +1,123 @@
+#!/usr/bin/perl -w
+# Send Pushover notification
+# (c) Alexander Kashev, 2013-2016
+# nagios: -epn
+
+use LWP::UserAgent;
+use Getopt::Long;
+use Time::HiRes;
+use Fcntl qw(:DEFAULT :flock);
+use JSON::XS;
+
+my %notification = (
+	'token' => 'INSERT APP TOKEN HERE',
+	'user' => '',
+	'message' => '',
+	'title' => '',
+	'timestamp' => '',
+	'url' => '',
+	'url_title' => ''
+);
+
+GetOptions(
+	'user=s' => \$notification{'user'},
+	'message=s' => \$notification{'message'},
+	'title=s' => \$notification{'title'},
+	'timestamp=i' => \$notification{'timestamp'},
+	'url=s' => \$notification{'url'},
+	'url-title=s' => \$notification{'url_title'},
+);
+
+# Truncate limited arguments
+$notification{'title'} = substr($notification{'title'}, 0, 512);
+$notification{'message'} =~ s/\\n/\n/g;
+$notification{'message'} = substr($notification{'message'}, 0, 512 - length($notification{'title'}));
+$notification{'url'} = substr($notification{'url'}, 0, 500);
+$notification{'url_title'} = substr($notification{'url_title'}, 0, 50);
+
+# Prune optional arguments
+delete $notification{'title'} unless ($notification{'title'});
+delete $notification{'timestamp'} unless ($notification{'timestamp'});
+delete $notification{'url'} unless ($notification{'url'});
+delete $notification{'url_title'} unless ($notification{'url_title'});
+
+print map { "$_ => $notification{$_}\n" } keys %notification;
+
+sub get_lock {
+	my $fh;
+	mkdir "/var/lock/pushy" or die "Pushy $$: cannot create lock folder" unless (-d "/var/lock/pushy");
+	
+	# Try lockfile 1
+	sysopen $fh, "/var/lock/pushy/lock1", O_CREAT or die "Pushy $$: can't open lock file 1: $!";
+	if(flock $fh, LOCK_EX | LOCK_NB) { return $fh; }
+	
+	# Try lockfile 2, then
+	close $fh;
+	sysopen $fh, "/var/lock/pushy/lock2", O_CREAT or die "Pushy $$: can't open lock file 1: $!";
+	if(flock $fh, LOCK_EX | LOCK_NB) { return $fh; }
+	
+	# Try again next time!
+	close $fh;
+	return 0;
+}
+
+sub notify {
+	my $request = shift;
+
+	my $response = LWP::UserAgent->new()->post(
+		"https://api.pushover.net/1/messages.json",
+		$request
+	);
+	
+	if($response->code == 200){
+		my $data = decode_json($response->decoded_content());
+		
+		if ($data->{status} == 1){
+			print "All okay!\n";
+			return 0;
+		}
+		else {
+			print "Got 200 but status is wrong!\n";
+			return 1;			
+		}
+	}
+	elsif (400 <= $response->code && $response->code < 500) {
+		print "Got 4xx\n";
+		return 1;		
+	}
+	else {
+		print "Transient error, gotta retry\n";
+		sleep 4;
+		return 2;
+	}
+}
+
+for(my $i = 0; $i < 6; $i++){
+	my $fh = get_lock();
+	
+	if($fh) {
+		#print "Pushy $$: Got my place in queue!\n";
+		
+		# Payload
+
+		my $result = notify(\%notification);
+		
+		#print $status->message;
+		#print map { "$_ => $status->{$_}\n" } keys %$status;
+		#print map { "$_ => $status->{'_request'}->{$_}\n" } keys %{$status->{_request}};
+		
+		flock $fh, LOCK_UN or die "Pushy $$: Can't unlock!";
+		close $fh;
+		if($result < 2){ exit($result); }
+	}
+	else {
+		print "Pushy $$: Have to wait\n";
+	}
+	
+	my $st = 2**$i + rand(2**$i);
+	#print "Pushy $$: Waiting #".$i+1." for ".$st." seconds\n";
+	sleep(2**$i + rand(2**$i));
+}
+
+#print "Pushy $$: Aborting after 6 attempts :(\n";
+exit(1);
