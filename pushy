@@ -13,8 +13,10 @@ my %notification = (
 	'token' => 'INSERT APP TOKEN HERE',
 	'user' => '',
 	'message' => '',
+	'priority' => 0,
 	'title' => '',
 	'timestamp' => '',
+	'sound' => '',
 	'url' => '',
 	'url_title' => ''
 );
@@ -22,8 +24,10 @@ my %notification = (
 GetOptions(
 	'user=s' => \$notification{'user'},
 	'message=s' => \$notification{'message'},
+	'priority=i' => \$notification{'priority'},
 	'title=s' => \$notification{'title'},
 	'timestamp=i' => \$notification{'timestamp'},
+	'sound=s' => \$notification{'sound'},
 	'url=s' => \$notification{'url'},
 	'url-title=s' => \$notification{'url_title'},
 );
@@ -32,10 +36,12 @@ GetOptions(
 $notification{'title'} = substr($notification{'title'}, 0, 512);
 $notification{'message'} =~ s/\\n/\n/g;
 $notification{'message'} = substr($notification{'message'}, 0, 512 - length($notification{'title'}));
+$notification{'priority'} = 0 unless ($notification{'priority'} >= -2 and $notification{'priority'} <= 2);
 $notification{'url'} = substr($notification{'url'}, 0, 500);
 $notification{'url_title'} = substr($notification{'url_title'}, 0, 50);
 
 # Prune optional arguments
+delete $notification{'sound'} unless ($notification{'sound'});
 delete $notification{'title'} unless ($notification{'title'});
 delete $notification{'timestamp'} unless ($notification{'timestamp'});
 delete $notification{'url'} unless ($notification{'url'});
