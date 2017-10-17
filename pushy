@@ -59,7 +59,7 @@ sub get_lock {
 	
 	# Try lockfile 2, then
 	close $fh;
-	sysopen $fh, "/var/lock/pushy/lock2", O_CREAT or die "Pushy $$: can't open lock file 1: $!";
+	sysopen $fh, "/var/lock/pushy/lock2", O_CREAT or die "Pushy $$: can't open lock file 2: $!";
 	if(flock $fh, LOCK_EX | LOCK_NB) { return $fh; }
 	
 	# Try again next time!
